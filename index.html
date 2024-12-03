@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College and NBA Basketball Game Watchability</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        h1 {
+            text-align: center;
+        }
+        .game {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #ffffff;
+        }
+        .game h2 {
+            margin: 0;
+            font-size: 18px;
+        }
+        .game .details {
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .game .debug {
+            font-size: 12px;
+            margin-top: 10px;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>College and NBA Basketball Watchability Scores</h1>
+    <div id="games-container"></div>
+
+    <script>
+        // Define power conferences for college basketball (if needed)
+        const POWER_CONFERENCES = ['2', '4', '8', '23'];
+
+        // Fetch games from ESPN API (supports both NCAA and NBA)
+        async function fetchGames(sport = 'mens-college-basketball') {
+            const url = `https://site.api.espn.com/apis/site/v2/sports/basketball/${sport}/scoreboard`;
+            const response = await fetch(url);
+            return await response.json();
+        }
+
+        // Format the start date to Pacific Time
+        function formatStartDate(startDateStr) {
+            const utcTime = new Date(startDateStr);
+            const pacificTime = new Date(utcTime - 8 * 60 * 60 * 1000); // UTC-8 for PST
+            return pacificTime.toLocaleString();
+        }
+
+        // Calculate the game score based on your criteria
+        function getGameScore(game, isNBA = false) {
+            let rankUpsetScore = 0;
+            let clockScore = 0;
+            let playerPerfScore = 0;
+            let scoringPerfScore = 0;
+            let closeGameScore = 0;
+
+            const comp = game.competitions[0];
+            const team1 = comp.competitors[0];
+            const team2 = comp.competitors[1];
+
+            const score1 = parseInt(team1.score);
+            const score2 = parseInt(team2.score);
+            const clock = comp.status.clock;
+            const period = comp.status.period;
+            const scoreDiff = Math.abs(score1 - score2);
+
+            // Determine if it's NBA or college
+            if (isNBA) {
+                // NBA: Use team records for rankUpsetScore
+                const team1Record = team1.team.records.find(record => record.name === 'overall').summary;
+                const team2Record = team2.team.records.find(record => record.name === 'overall').summary;
+                if (team1Record && team2Record) {
+                    const team1Wins = parseInt(team1Record.split('-')[0]);
+                    const team2Wins = parseInt(team2Record.split('-')[0]);
+                    if (team1Wins < team2Wins && score1 > score2) {
+                        rankUpsetScore = 10;
+                    } else if (team2Wins < team1Wins && score2 > score1) {
+                        rankUpsetScore = 10;
+                    } else {
+                        rankUpsetScore = 7;
+                    }
+                }
+
+                // Clock score for NBA: 4 periods, 12 minutes each
+                if (period <= 4) {
+                    clockScore = 480 - (clock / (scoreDiff > 0 ? scoreDiff : 0.5));
+                } else {
+                    clockScore = 1000;
+                }
+
+                // Player performance score for NBA (threshold 40)
+                const leaders = [team1, team2].reduce((acc, team) => {
+                    if (team.leaders) acc.push(...team.leaders);
+                    return acc;
+                }, []);
+                leaders.forEach(leader => {
+                    if (leader.name !== "rating") {
+                        leader.leaders.forEach(player => {
+                            if (parseFloat(player.value) > 40) {
+                                playerPerfScore += 1;
+                            }
+                        });
+                    }
+                });
+
+            } else {
+                // College: Use rankings for rankUpsetScore
+                const rank1 = team1.curatedRank.current;
+                const rank2 = team2.curatedRank.current;
+
+                if (rank1 === 99 && rank2 !== 99 && score1 > score2) {
+                    rankUpsetScore = 10;
+                } else if (rank2 === 99 && rank1 !== 99 && score2 > score1) {
+                    rankUpsetScore = 10;
+                } else if (rank1 !== 99 && rank2 !== 99) {
+                    rankUpsetScore = 7;
+                } else if (rank1 === 99 && rank2 === 99) {
+                    const conf1 = team1.team.conferenceId || -1;
+                    const conf2 = team2.team.conferenceId || -1;
+                    if (POWER_CONFERENCES.includes(conf1) || POWER_CONFERENCES.includes(conf2)) {
+                        rankUpsetScore = 5;
+                    } else {
+                        rankUpsetScore = 3;
+                    }
+                } else {
+                    rankUpsetScore = 1;
+                }
+
+                // Clock score for college: 2 halves, 20 minutes each
+                if (period === 1) {
+                    clockScore = 0;
+                } else if (period === 2) {
+                    //clockScore = 1000 - (clock / (scoreDiff > 0 ? scoreDiff : 0.5));
+                    clockScore = (1200 - clock) * (1 / Math.max(scoreDiff, 1));
+                } else {
+                    clockScore = 1000;
+                }
+
+                // Player performance score for college (threshold 25)
+                const leaders = [team1, team2].reduce((acc, team) => {
+                    if (team.leaders) acc.push(...team.leaders);
+                    return acc;
+                }, []);
+                leaders.forEach(leader => {
+                    if (leader.name !== "rating") {
+                        leader.leaders.forEach(player => {
+                            if (parseFloat(player.value) > 25) {
+                                playerPerfScore += 1;
+                            }
+                        });
+                    }
+                });
+            }
+
+            // Scoring performance score
+            scoringPerfScore = score1 + score2;
+
+            // Close game score
+            closeGameScore = Math.max(50 - scoreDiff, 0);
+
+            // Total score calculation
+            const totalScore = (rankUpsetScore * 13) + (clockScore * 8) + (closeGameScore * 2) + (playerPerfScore * 42) + (scoringPerfScore * 3);
+
+            return { totalScore, debugInfo: { rankUpsetScore, clockScore, playerPerfScore, scoringPerfScore, closeGameScore } };
+        }
+
+        // Filter games to show only those that are ongoing
+        function filterGames(games) {
+            return games.filter(game => game.competitions[0].status.type.state === 'in');
+        }
+
+        // Render the games on the page
+        function renderGames(games, isNBA = false) {
+            const gamesContainer = document.getElementById('games-container');
+            games.forEach(game => {
+                const { totalScore, debugInfo } = getGameScore(game, isNBA);
+                const comp = game.competitions[0];
+                const team1 = comp.competitors[0];
+                const team2 = comp.competitors[1];
+
+                const winProbability = {
+                    home: comp.situation?.lastPlay?.probability?.homeWinPercentage || 'N/A',
+                    away: comp.situation?.lastPlay?.probability?.awayWinPercentage || 'N/A'
+                };
+                const startDatePacific = formatStartDate(comp.startDate);
+                const oddsDetails = comp.odds?.[0]?.details || 'N/A';
+
+                const gameDiv = document.createElement('div');
+                gameDiv.className = 'game';
+
+                gameDiv.innerHTML = `
+                    <h2>${game.name} - Watchability Score: ${totalScore}</h2>
+                    <p>Records: ${team2.team.records?.find(record => record.name === 'overall')?.summary || 'N/A'} vs ${team1.team.records?.find(record => record.name === 'overall')?.summary || 'N/A'}, Scores: ${team2.score} vs ${team1.score}</p>
+                    <p>Time Remaining: ${comp.status.type.detail}, Win Probability: Home - ${winProbability.home}, Away - ${winProbability.away}</p>
+                    <p>Start Date: ${startDatePacific}, Odds Details: ${oddsDetails}</p>
+                    <div class="debug">
+                        <strong>Debug Info:</strong><br>
+                        Rank Upset Score: ${debugInfo.rankUpsetScore}<br>
+                        Clock Score: ${debugInfo.clockScore}<br>
+                        Player Performance Score: ${debugInfo.playerPerfScore}<br>
+                        Scoring Performance Score: ${debugInfo.scoringPerfScore}<br>
+                        Close Game Score: ${debugInfo.closeGameScore}
+                    </div>
+                `;
+                gamesContainer.appendChild(gameDiv);
+            });
+        }
+
+        // Main function to load games and render them
+        async function main() {
+            const collegeGamesData = await fetchGames('mens-college-basketball');
+            const nbaGamesData = await fetchGames('nba');
+
+            const collegeGames = collegeGamesData.events;
+            const nbaGames = nbaGamesData.events;
+
+            const filteredCollegeGames = filterGames(collegeGames);
+            const filteredNBAgames = filterGames(nbaGames);
+
+            renderGames(filteredCollegeGames); // Render college games
+            renderGames(filteredNBAgames, true); // Render NBA games
+        }
+
+        // Run the main function when the page loads
+        main();
+    </script>
+</body>
+</html>
