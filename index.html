@@ -37,7 +37,9 @@
     </style>
 </head>
 <body>
-
+    <label for="useMockData">Use Mock Data</label>
+    <input type="checkbox" id="useMockData">
+    
     <h1>Scurfing</h1>
     <div id="games-container"></div>
 
@@ -219,13 +221,30 @@
             });
         }
 
-        // Main function to load games and render them
+        // Modify the main function to load mock data when the checkbox is checked
         async function main() {
-            const collegeGamesData = await fetchGames('mens-college-basketball');
-            const nbaGamesData = await fetchGames('nba');
+            const useMockData = document.getElementById('useMockData').checked;
 
-            const collegeGames = collegeGamesData.events;
-            const nbaGames = nbaGamesData.events;
+            let collegeGames, nbaGames;
+
+            if (!useMockData) {
+                // Fetch mock data from ncaa-test.json file
+                const mockCollegeData = await fetch('ncaa-test.json');
+                const mockNBAData = await fetch('nba-test.json');
+                
+                const collegeGamesData = await mockCollegeData.json();
+                const nbaGamesData = await mockNBAData.json();
+                
+                collegeGames = collegeGamesData.events;
+                nbaGames = nbaGamesData.events;
+            } else {
+                // Fetch live data from the API
+                const collegeGamesData = await fetchGames('mens-college-basketball');
+                const nbaGamesData = await fetchGames('nba');
+
+                collegeGames = collegeGamesData.events;
+                nbaGames = nbaGamesData.events;
+            }
 
             const filteredCollegeGames = filterGames(collegeGames);
             const filteredNBAgames = filterGames(nbaGames);
@@ -234,7 +253,16 @@
             renderGames(filteredNBAgames, true); // Render NBA games
         }
 
-        // Run the main function when the page loads
+        // Event listener for the checkbox to trigger a re-render based on the selected option
+        document.getElementById('useMockData').addEventListener('change', () => {
+            // Clear the existing games container
+            document.getElementById('games-container').innerHTML = '';
+            
+            // Re-run the main function to load new data based on the checkbox state
+            main();
+        });
+
+        // Initial load
         main();
     </script>
 </body>
