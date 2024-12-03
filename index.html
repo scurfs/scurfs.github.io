@@ -227,16 +227,16 @@
 
             let collegeGames, nbaGames;
 
-            if (!useMockData) {
+            if (useMockData) {
                 // Fetch mock data from ncaa-test.json file
                 const mockCollegeData = await fetch('ncaa-test.json');
-                const mockNBAData = await fetch('nba-test.json');
+                //const mockNBAData = await fetch('nba-test.json');
                 
                 const collegeGamesData = await mockCollegeData.json();
-                const nbaGamesData = await mockNBAData.json();
+                //const nbaGamesData = await mockNBAData.json();
                 
                 collegeGames = collegeGamesData.events;
-                nbaGames = nbaGamesData.events;
+                // nbaGames = collegeGamesData.events;
             } else {
                 // Fetch live data from the API
                 const collegeGamesData = await fetchGames('mens-college-basketball');
@@ -247,10 +247,10 @@
             }
 
             const filteredCollegeGames = filterGames(collegeGames);
-            const filteredNBAgames = filterGames(nbaGames);
+            // const filteredNBAgames = filterGames(nbaGames);
 
             renderGames(filteredCollegeGames); // Render college games
-            renderGames(filteredNBAgames, true); // Render NBA games
+            // renderGames(filteredNBAgames, true); // Render NBA games
         }
 
         // Event listener for the checkbox to trigger a re-render based on the selected option
